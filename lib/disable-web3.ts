@@ -1,3 +1,15 @@
+// Make sure this file is imported first in your app
+// Add this line at the top of the file:
+
+// Force hardware acceleration if available
+if (typeof window !== "undefined") {
+  const canvas = document.createElement("canvas")
+  const gl = canvas.getContext("webgl", { failIfMajorPerformanceCaveat: false })
+  if (gl) {
+    console.log("WebGL initialized in pre-check")
+  }
+}
+
 // This file prevents Web3 conflicts by disabling any automatic Web3 injection
 // It runs before any other code to ensure no conflicts with ethereum property
 

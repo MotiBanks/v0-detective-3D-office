@@ -16,6 +16,39 @@ import CryptoEvidenceModal from "./crypto-evidence-modal"
 import FileDrawerModal from "./file-drawer-modal"
 import PhoneCallModal from "./phone-call-modal"
 
+// Add this import at the top of the file
+import { preloadCriticalAssets } from "@/lib/preload-assets"
+
+// Add this function at the top of your DetectiveRoom component
+const ensureWebGLSupport = () => {
+  if (typeof window !== "undefined") {
+    try {
+      // Create a test canvas to verify WebGL support
+      const canvas = document.createElement("canvas")
+      const gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl")
+
+      if (!gl) {
+        console.error("WebGL not supported")
+        return false
+      }
+
+      // Check for required extensions
+      const extensions = ["OES_texture_float", "OES_texture_float_linear"]
+      for (const ext of extensions) {
+        if (!gl.getExtension(ext)) {
+          console.warn(`WebGL extension ${ext} not supported`)
+        }
+      }
+
+      return true
+    } catch (e) {
+      console.error("Error checking WebGL support:", e)
+      return false
+    }
+  }
+  return false
+}
+
 export type Evidence = {
   title: string
   description: string
@@ -37,7 +70,30 @@ export type FileDrawer = {
   articleUrl: string
 }
 
+// Fallback scene component
+const FallbackScene = () => (
+  <div
+    style={{
+      position: "fixed",
+      top: 0,
+      left: 0,
+      width: "100%",
+      height: "100%",
+      backgroundColor: "black",
+      color: "white",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      fontSize: "2em",
+    }}
+  >
+    <h1>Error: Could not initialize 3D scene. Please ensure your browser supports WebGL.</h1>
+  </div>
+)
+
 export default function DetectiveRoom() {
+  // Add this state at the top of your component with other state declarations
+  const [renderFailed, setRenderFailed] = useState(false)
   const [selectedEvidence, setSelectedEvidence] = useState<Evidence | null>(null)
   const [selectedCryptoEvidence, setSelectedCryptoEvidence] = useState<CryptoEvidence | null>(null)
   const [selectedFileDrawer, setSelectedFileDrawer] = useState<FileDrawer | null>(null)
@@ -202,6 +258,12 @@ export default function DetectiveRoom() {
       }
     }
   }, [timeOfDay, soundsEnabled, soundsLoaded, backgroundMusic, rainSound, citySound, tickingClockSound])
+
+  // Add this useEffect after your other useEffect hooks
+  useEffect(() => {
+    // Preload critical assets before rendering
+    preloadCriticalAssets().catch(console.error)
+  }, [])
 
   // Memoize time change handler to prevent recreation on every render
   const handleTimeChange = useCallback((newTime: number) => {
@@ -419,9 +481,15 @@ export default function DetectiveRoom() {
     </mesh>
   )
 
+  // Add this at the beginning of your return statement, before the div with canvasRef
+  if (renderFailed) {
+    return <FallbackScene />
+  }
+
   return (
     <>
       <div ref={canvasRef} className="fixed inset-0 bg-black magnifying-glass-cursor">
+        {/* Add this to your Canvas component */}
         <Canvas
           shadows
           gl={{
@@ -430,6 +498,17 @@ export default function DetectiveRoom() {
             powerPreference: "high-performance",
             failIfMajorPerformanceCaveat: false,
             toneMappingExposure: 1.5,
+            preserveDrawingBuffer: true,
+            logarithmicDepthBuffer: true,
+          }}
+          onCreated={({ gl }) => {
+            gl.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+            gl.setClearColor("#000000", 1)
+            console.log("Canvas created successfully")
+          }}
+          onError={(error) => {
+            console.error("Three.js error:", error)
+            setRenderFailed(true)
           }}
         >
           {/* Add strong ambient and directional lights */}
