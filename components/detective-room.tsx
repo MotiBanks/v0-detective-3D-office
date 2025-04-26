@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect, useRef, useCallback } from "react"
 import { Canvas } from "@react-three/fiber"
 import { OrbitControls, Environment, PerspectiveCamera } from "@react-three/drei"
 import { Howl } from "howler"
+import * as THREE from "three"
 import Room from "./room"
 import EvidenceModal from "./evidence-modal"
 import RainEffect from "./rain-effect"
@@ -15,39 +16,7 @@ import "../styles/magnifying-glass-cursor.css"
 import CryptoEvidenceModal from "./crypto-evidence-modal"
 import FileDrawerModal from "./file-drawer-modal"
 import PhoneCallModal from "./phone-call-modal"
-
-// Add this import at the top of the file
-import { preloadCriticalAssets } from "@/lib/preload-assets"
-
-// Add this function at the top of your DetectiveRoom component
-const ensureWebGLSupport = () => {
-  if (typeof window !== "undefined") {
-    try {
-      // Create a test canvas to verify WebGL support
-      const canvas = document.createElement("canvas")
-      const gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl")
-
-      if (!gl) {
-        console.error("WebGL not supported")
-        return false
-      }
-
-      // Check for required extensions
-      const extensions = ["OES_texture_float", "OES_texture_float_linear"]
-      for (const ext of extensions) {
-        if (!gl.getExtension(ext)) {
-          console.warn(`WebGL extension ${ext} not supported`)
-        }
-      }
-
-      return true
-    } catch (e) {
-      console.error("Error checking WebGL support:", e)
-      return false
-    }
-  }
-  return false
-}
+import SimplifiedRoom from "./simplified-room"
 
 export type Evidence = {
   title: string
@@ -70,29 +39,7 @@ export type FileDrawer = {
   articleUrl: string
 }
 
-// Fallback scene component
-const FallbackScene = () => (
-  <div
-    style={{
-      position: "fixed",
-      top: 0,
-      left: 0,
-      width: "100%",
-      height: "100%",
-      backgroundColor: "black",
-      color: "white",
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      fontSize: "2em",
-    }}
-  >
-    <h1>Error: Could not initialize 3D scene. Please ensure your browser supports WebGL.</h1>
-  </div>
-)
-
 export default function DetectiveRoom() {
-  // Add this state at the top of your component with other state declarations
   const [renderFailed, setRenderFailed] = useState(false)
   const [selectedEvidence, setSelectedEvidence] = useState<Evidence | null>(null)
   const [selectedCryptoEvidence, setSelectedCryptoEvidence] = useState<CryptoEvidence | null>(null)
@@ -109,6 +56,8 @@ export default function DetectiveRoom() {
   const [timeOfDay, setTimeOfDay] = useState(22) // Start at 10 PM for noir feel
   const [cycleSpeed, setCycleSpeed] = useState(0) // 0 = manual, >0 = automatic cycle
   const [isTogglingSound, setIsTogglingSound] = useState(false)
+  const [useSimplifiedRoom, setUseSimplifiedRoom] = useState(false)
+  const [rendererInitialized, setRendererInitialized] = useState(false)
   const controlsRef = useRef<any>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   const audioVolumesRef = useRef({
@@ -258,12 +207,6 @@ export default function DetectiveRoom() {
       }
     }
   }, [timeOfDay, soundsEnabled, soundsLoaded, backgroundMusic, rainSound, citySound, tickingClockSound])
-
-  // Add this useEffect after your other useEffect hooks
-  useEffect(() => {
-    // Preload critical assets before rendering
-    preloadCriticalAssets().catch(console.error)
-  }, [])
 
   // Memoize time change handler to prevent recreation on every render
   const handleTimeChange = useCallback((newTime: number) => {
@@ -481,15 +424,31 @@ export default function DetectiveRoom() {
     </mesh>
   )
 
-  // Add this at the beginning of your return statement, before the div with canvasRef
+  // Toggle between full and simplified room
+  const toggleRoomMode = useCallback(() => {
+    setUseSimplifiedRoom((prev) => !prev)
+  }, [])
+
   if (renderFailed) {
-    return <FallbackScene />
+    return (
+      <div className="w-full h-screen bg-black flex flex-col items-center justify-center text-white p-4 text-center">
+        <h1 className="text-2xl font-bold mb-4">Detective Office</h1>
+        <div className="w-24 h-24 bg-gray-700 animate-pulse mb-6"></div>
+        <p className="mb-2">Failed to initialize 3D environment</p>
+        <p className="text-sm text-gray-400 mb-4">Your browser may have limited WebGL support.</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600"
+        >
+          Retry
+        </button>
+      </div>
+    )
   }
 
   return (
     <>
       <div ref={canvasRef} className="fixed inset-0 bg-black magnifying-glass-cursor">
-        {/* Add this to your Canvas component */}
         <Canvas
           shadows
           gl={{
@@ -497,14 +456,20 @@ export default function DetectiveRoom() {
             alpha: false,
             powerPreference: "high-performance",
             failIfMajorPerformanceCaveat: false,
-            toneMappingExposure: 1.5,
             preserveDrawingBuffer: true,
-            logarithmicDepthBuffer: true,
           }}
-          onCreated={({ gl }) => {
-            gl.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+          onCreated={({ gl, scene }) => {
+            // Force pixel ratio to 1 for better performance
+            gl.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
+
+            // Set clear color to ensure background isn't transparent
             gl.setClearColor("#000000", 1)
+
+            // Set scene background to black
+            scene.background = new THREE.Color("#000000")
+
             console.log("Canvas created successfully")
+            setRendererInitialized(true)
           }}
           onError={(error) => {
             console.error("Three.js error:", error)
@@ -512,28 +477,32 @@ export default function DetectiveRoom() {
           }}
         >
           {/* Add strong ambient and directional lights */}
-          <ambientLight intensity={0.5} />
-          <directionalLight position={[5, 10, 7.5]} intensity={1} castShadow />
-
+          <ambientLight intensity={1.0} /> {/* Increased from 0.5 */}
+          <directionalLight position={[5, 10, 7.5]} intensity={2} castShadow /> {/* Increased from 1 */}
+          <directionalLight position={[-5, 10, -7.5]} intensity={1} castShadow /> {/* Added second light */}
           <fog attach="fog" args={["#0a0a0f", 8, 30]} />
           <PerspectiveCamera makeDefault position={cameraPosition} fov={50} />
-
           <Suspense fallback={<FallbackComponent />}>
-            <Room
-              onShowEvidence={handleShowEvidence}
-              onShowCryptoEvidence={handleShowCryptoEvidence}
-              onOpenFileDrawer={handleOpenFileDrawer}
-              onShowPhoneCall={handleShowPhoneCall}
-              focusOnObject={focusOnObject}
-              resetCamera={resetCamera}
-              timeOfDay={timeOfDay}
-            />
-            <RainEffect timeOfDay={timeOfDay} />
-            <CityBackdrop timeOfDay={timeOfDay} />
-            <DayNightCycle timeOfDay={timeOfDay} cycleSpeed={cycleSpeed} onTimeChange={handleTimeChange} />
+            {useSimplifiedRoom ? (
+              <SimplifiedRoom />
+            ) : (
+              <>
+                <Room
+                  onShowEvidence={handleShowEvidence}
+                  onShowCryptoEvidence={handleShowCryptoEvidence}
+                  onOpenFileDrawer={handleOpenFileDrawer}
+                  onShowPhoneCall={handleShowPhoneCall}
+                  focusOnObject={focusOnObject}
+                  resetCamera={resetCamera}
+                  timeOfDay={timeOfDay}
+                />
+                <RainEffect timeOfDay={timeOfDay} />
+                <CityBackdrop timeOfDay={timeOfDay} />
+                <DayNightCycle timeOfDay={timeOfDay} cycleSpeed={cycleSpeed} onTimeChange={handleTimeChange} />
+              </>
+            )}
             <Environment preset="night" />
           </Suspense>
-
           <OrbitControls
             ref={controlsRef}
             target={cameraTarget}
@@ -618,6 +587,28 @@ export default function DetectiveRoom() {
         >
           <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
           <polyline points="9 22 9 12 15 12 15 22" />
+        </svg>
+      </button>
+
+      {/* Toggle room mode button */}
+      <button
+        className="fixed top-4 left-4 z-10 rounded-full bg-gray-800/70 p-2 text-white hover:bg-gray-700/70 transition-colors"
+        onClick={toggleRoomMode}
+        title={useSimplifiedRoom ? "Switch to detailed room" : "Switch to simplified room"}
+      >
+        <span className="sr-only">Toggle Room Mode</span>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
         </svg>
       </button>
 

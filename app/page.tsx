@@ -2,10 +2,12 @@
 
 import { Suspense, useEffect, useState } from "react"
 import DetectiveRoom from "@/components/detective-room"
+import { useTexturePreloader } from "@/components/texture-loader"
 
 export default function Home() {
   const [hasError, setHasError] = useState(false)
   const [isClient, setIsClient] = useState(false)
+  const { texturesLoaded, progress, error } = useTexturePreloader()
 
   useEffect(() => {
     setIsClient(true)
@@ -34,6 +36,18 @@ export default function Home() {
         <h1 className="text-white text-2xl">WebGL Support Issue Detected</h1>
         <p className="text-gray-300">Your browser may not support the required 3D features.</p>
         <p className="text-gray-400">Try using Chrome or Edge on a desktop computer.</p>
+      </div>
+    )
+  }
+
+  if (!texturesLoaded) {
+    return (
+      <div className="w-full h-screen bg-black flex items-center justify-center flex-col gap-4">
+        <div className="text-white text-xl">Loading Detective Office...</div>
+        <div className="w-64 h-2 bg-gray-700 rounded-full overflow-hidden">
+          <div className="h-full bg-white transition-all duration-300 ease-out" style={{ width: `${progress}%` }}></div>
+        </div>
+        <div className="text-gray-400 text-sm">{progress}%</div>
       </div>
     )
   }
